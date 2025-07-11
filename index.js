@@ -69,7 +69,7 @@ async function main() {
   const useDevice = argv.includes('--device');
   // Remove all flags (starting with --)
   const endpointArg = argv.find(arg => !arg.startsWith('--'));
-  const apiEndpoint = endpointArg || 'users';
+  const apiEndpoint = endpointArg || null;
   if (!API_ENV_ID) {
     console.error('Missing API_ENV_ID in environment.');
     process.exit(1);
@@ -84,18 +84,33 @@ async function main() {
   let triedReauth = false;
   while (true) {
     let { access_token, expires_at, refresh_token, refresh_expires_at } = readTokenCache();
-    const apiUrl = `https://api.pingone.com/v1/environments/${API_ENV_ID}/${apiEndpoint.replace(/^\/+/,'')}`;
     // If access_token is valid, use it
     if (access_token && expires_at && Date.now() < expires_at) {
       try {
-        const apiRes = await axios.get(apiUrl, {
-          headers: {
-            Authorization: `Bearer ${access_token}`
-          }
-        });
-        // Pretty-print valid JSON with color using json-colorizer
-        const jsonString = JSON.stringify(apiRes.data, null, 2);
-        console.log('API Response:\n' + jsonColorizer(jsonString));
+        let apiUrl, apiRes;
+        if (!apiEndpoint) {
+          // Decode JWT to get sub
+          const [, payloadB64] = access_token.split('.');
+          const payload = JSON.parse(Buffer.from(payloadB64, 'base64url').toString('utf8'));
+          const sub = payload.sub;
+          apiUrl = `https://api.pingone.com/v1/environments/${API_ENV_ID}/users/${sub}`;
+          apiRes = await axios.get(apiUrl, {
+            headers: {
+              Authorization: `Bearer ${access_token}`
+            }
+          });
+          const email = apiRes.data.email || apiRes.data.username || apiRes.data.name || 'unknown';
+          console.log(`Authenticated as ${email}`);
+        } else {
+          apiUrl = `https://api.pingone.com/v1/environments/${API_ENV_ID}/${apiEndpoint.replace(/^\/+/,'')}`;
+          apiRes = await axios.get(apiUrl, {
+            headers: {
+              Authorization: `Bearer ${access_token}`
+            }
+          });
+          const jsonString = JSON.stringify(apiRes.data, null, 2);
+          console.log('API Response:\n' + jsonColorizer(jsonString));
+        }
         return;
       } catch (err) {
         // If unauthorized, clear cache and continue to re-auth
@@ -127,13 +142,30 @@ async function main() {
         writeTokenCache(new_access_token, new_expires_in, new_refresh_token, new_refresh_expires_in);
         // Try API call again with new token
         try {
-          const apiRes = await axios.get(apiUrl, {
-            headers: {
-              Authorization: `Bearer ${new_access_token}`
-            }
-          });
-          const jsonString = JSON.stringify(apiRes.data, null, 2);
-          console.log('API Response:\n' + jsonColorizer(jsonString));
+          let apiUrl, apiRes;
+          if (!apiEndpoint) {
+            // Decode JWT to get sub
+            const [, payloadB64] = new_access_token.split('.');
+            const payload = JSON.parse(Buffer.from(payloadB64, 'base64url').toString('utf8'));
+            const sub = payload.sub;
+            apiUrl = `https://api.pingone.com/v1/environments/${API_ENV_ID}/users/${sub}`;
+            apiRes = await axios.get(apiUrl, {
+              headers: {
+                Authorization: `Bearer ${new_access_token}`
+              }
+            });
+            const email = apiRes.data.email || apiRes.data.username || apiRes.data.name || 'unknown';
+            console.log(`Authenticated as ${email}`);
+          } else {
+            apiUrl = `https://api.pingone.com/v1/environments/${API_ENV_ID}/${apiEndpoint.replace(/^\/+/,'')}`;
+            apiRes = await axios.get(apiUrl, {
+              headers: {
+                Authorization: `Bearer ${new_access_token}`
+              }
+            });
+            const jsonString = JSON.stringify(apiRes.data, null, 2);
+            console.log('API Response:\n' + jsonColorizer(jsonString));
+          }
           return;
         } catch (err) {
           if (err.response && err.response.status === 401 && !triedReauth) {
@@ -218,15 +250,31 @@ async function main() {
     // Cache token
     if (accessToken && expires_in) writeTokenCache(accessToken, expires_in, refresh_token, refresh_expires_in);
     // Use the access token in a GET call to the provided URL
-    const apiUrl = `https://api.pingone.com/v1/environments/${API_ENV_ID}/${apiEndpoint.replace(/^\/+/,'')}`;
     try {
-      const apiRes = await axios.get(apiUrl, {
-        headers: {
-          Authorization: `Bearer ${accessToken}`
-        }
-      });
-      const jsonString = JSON.stringify(apiRes.data, null, 2);
-      console.log('API Response:\n' + jsonColorizer(jsonString));
+      let apiUrl, apiRes;
+      if (!apiEndpoint) {
+        // Decode JWT to get sub
+        const [, payloadB64] = accessToken.split('.');
+        const payload = JSON.parse(Buffer.from(payloadB64, 'base64url').toString('utf8'));
+        const sub = payload.sub;
+        apiUrl = `https://api.pingone.com/v1/environments/${API_ENV_ID}/users/${sub}`;
+        apiRes = await axios.get(apiUrl, {
+          headers: {
+            Authorization: `Bearer ${accessToken}`
+          }
+        });
+        const email = apiRes.data.email || apiRes.data.username || apiRes.data.name || 'unknown';
+        console.log(`Authenticated as ${email}`);
+      } else {
+        apiUrl = `https://api.pingone.com/v1/environments/${API_ENV_ID}/${apiEndpoint.replace(/^\/+/,'')}`;
+        apiRes = await axios.get(apiUrl, {
+          headers: {
+            Authorization: `Bearer ${accessToken}`
+          }
+        });
+        const jsonString = JSON.stringify(apiRes.data, null, 2);
+        console.log('API Response:\n' + jsonColorizer(jsonString));
+      }
     } catch (apiErr) {
       console.error('API call failed:', apiErr.response?.data || apiErr.message);
       process.exit(1);
@@ -275,13 +323,30 @@ async function main() {
         const apiUrl = `https://api.pingone.com/v1/environments/${API_ENV_ID}/${apiEndpoint.replace(/^\/+/,'')}`;
         console.log('Using API URL:', apiUrl);
         try {
-          const apiRes = await axios.get(apiUrl, {
-            headers: {
-              Authorization: `Bearer ${accessToken}`
-            }
-          });
-        const jsonString = JSON.stringify(apiRes.data, null, 2);
-        console.log('API Response:\n' + jsonColorizer(jsonString));
+          let apiUrl, apiRes;
+          if (!apiEndpoint) {
+            // Decode JWT to get sub
+            const [, payloadB64] = accessToken.split('.');
+            const payload = JSON.parse(Buffer.from(payloadB64, 'base64url').toString('utf8'));
+            const sub = payload.sub;
+            apiUrl = `https://api.pingone.com/v1/environments/${API_ENV_ID}/users/${sub}`;
+            apiRes = await axios.get(apiUrl, {
+              headers: {
+                Authorization: `Bearer ${accessToken}`
+              }
+            });
+            const email = apiRes.data.email || apiRes.data.username || apiRes.data.name || 'unknown';
+            console.log(`Authenticated as ${email}`);
+          } else {
+            apiUrl = `https://api.pingone.com/v1/environments/${API_ENV_ID}/${apiEndpoint.replace(/^\/+/,'')}`;
+            apiRes = await axios.get(apiUrl, {
+              headers: {
+                Authorization: `Bearer ${accessToken}`
+              }
+            });
+            const jsonString = JSON.stringify(apiRes.data, null, 2);
+            console.log('API Response:\n' + jsonColorizer(jsonString));
+          }
         } catch (apiErr) {
           console.error('API call failed:', apiErr.response?.data || apiErr.message);
           process.exit(1);
