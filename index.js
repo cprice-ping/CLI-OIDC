@@ -6,7 +6,7 @@ import crypto from 'crypto';
 import axios from 'axios';
 import fs from 'fs';
 import path from 'path';
-import colorize from 'json-colorizer';
+import { colorize as jsonColorizer } from 'json-colorizer';
 
 // Load env vars
 
@@ -95,7 +95,7 @@ async function main() {
         });
         // Pretty-print valid JSON with color using json-colorizer
         const jsonString = JSON.stringify(apiRes.data, null, 2);
-        console.log('API Response:\n' + colorize(jsonString));
+        console.log('API Response:\n' + jsonColorizer(jsonString));
         return;
       } catch (err) {
         // If unauthorized, clear cache and continue to re-auth
@@ -132,7 +132,8 @@ async function main() {
               Authorization: `Bearer ${new_access_token}`
             }
           });
-          console.log('API Response:', JSON.stringify(apiRes.data, null, 2));
+          const jsonString = JSON.stringify(apiRes.data, null, 2);
+          console.log('API Response:\n' + jsonColorizer(jsonString));
           return;
         } catch (err) {
           if (err.response && err.response.status === 401 && !triedReauth) {
@@ -224,7 +225,8 @@ async function main() {
           Authorization: `Bearer ${accessToken}`
         }
       });
-      console.log('API Response:', JSON.stringify(apiRes.data, null, 2));
+      const jsonString = JSON.stringify(apiRes.data, null, 2);
+      console.log('API Response:\n' + jsonColorizer(jsonString));
     } catch (apiErr) {
       console.error('API call failed:', apiErr.response?.data || apiErr.message);
       process.exit(1);
@@ -278,7 +280,8 @@ async function main() {
               Authorization: `Bearer ${accessToken}`
             }
           });
-          console.log('API Response:', JSON.stringify(apiRes.data, null, 2));
+        const jsonString = JSON.stringify(apiRes.data, null, 2);
+        console.log('API Response:\n' + jsonColorizer(jsonString));
         } catch (apiErr) {
           console.error('API call failed:', apiErr.response?.data || apiErr.message);
           process.exit(1);
