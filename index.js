@@ -77,28 +77,33 @@ async function main() {
   const tokenUrl = discovery.token_endpoint;
   const deviceEndpoint = discovery.device_authorization_endpoint;
 
-  // Try to use cached token
-  let cachedToken = readTokenCache();
-  if (cachedToken) {
-    const apiUrl = `https://api.pingone.com/v1/environments/${ENV_ID}/${apiEndpoint.replace(/^\/+/,'')}`;
-    try {
-      const apiRes = await axios.get(apiUrl, {
-        headers: {
-          Authorization: `Bearer ${cachedToken}`
+  let triedReauth = false;
+  while (true) {
+    let cachedToken = readTokenCache();
+    if (cachedToken) {
+      const apiUrl = `https://api.pingone.com/v1/environments/${ENV_ID}/${apiEndpoint.replace(/^\/+/,'')}`;
+      try {
+        const apiRes = await axios.get(apiUrl, {
+          headers: {
+            Authorization: `Bearer ${cachedToken}`
+          }
+        });
+        console.log('API Response:', JSON.stringify(apiRes.data, null, 2));
+        return;
+      } catch (err) {
+        // If unauthorized, clear cache and continue to re-auth
+        if (err.response && err.response.status === 401 && !triedReauth) {
+          fs.unlinkSync(CACHE_FILE);
+          console.log('Cached token expired or invalid, re-authenticating...');
+          triedReauth = true;
+          continue;
+        } else {
+          console.error('API call failed:', err.response?.data || err.message);
+          process.exit(1);
         }
-      });
-      console.log('API Response:', JSON.stringify(apiRes.data, null, 2));
-      return;
-    } catch (err) {
-      // If unauthorized, clear cache and continue to re-auth
-      if (err.response && err.response.status === 401) {
-        fs.unlinkSync(CACHE_FILE);
-        console.log('Cached token expired or invalid, re-authenticating...');
-      } else {
-        console.error('API call failed:', err.response?.data || err.message);
-        process.exit(1);
       }
     }
+    break;
   }
 
   if (useDevice) {
