@@ -46,17 +46,19 @@ const CACHE_FILE = path.join(process.cwd(), '.token_cache.json');
 function readTokenCache() {
   try {
     const data = fs.readFileSync(CACHE_FILE, 'utf8');
-    const { access_token, expires_at } = JSON.parse(data);
-    if (access_token && expires_at && Date.now() < expires_at) {
-      return access_token;
-    }
+    const { access_token, expires_at, refresh_token, refresh_expires_at } = JSON.parse(data);
+    return { access_token, expires_at, refresh_token, refresh_expires_at };
   } catch {}
-  return null;
+  return {};
 }
 
-function writeTokenCache(access_token, expires_in) {
+function writeTokenCache(access_token, expires_in, refresh_token, refresh_expires_in) {
   const expires_at = Date.now() + (expires_in * 1000) - 10000; // 10s early
-  fs.writeFileSync(CACHE_FILE, JSON.stringify({ access_token, expires_at }));
+  let refresh_expires_at = undefined;
+  if (refresh_token && refresh_expires_in) {
+    refresh_expires_at = Date.now() + (refresh_expires_in * 1000) - 10000;
+  }
+  fs.writeFileSync(CACHE_FILE, JSON.stringify({ access_token, expires_at, refresh_token, refresh_expires_at }));
 }
 
 async function main() {
@@ -79,13 +81,14 @@ async function main() {
 
   let triedReauth = false;
   while (true) {
-    let cachedToken = readTokenCache();
-    if (cachedToken) {
-      const apiUrl = `https://api.pingone.com/v1/environments/${ENV_ID}/${apiEndpoint.replace(/^\/+/,'')}`;
+    let { access_token, expires_at, refresh_token, refresh_expires_at } = readTokenCache();
+    const apiUrl = `https://api.pingone.com/v1/environments/${ENV_ID}/${apiEndpoint.replace(/^\/+/,'')}`;
+    // If access_token is valid, use it
+    if (access_token && expires_at && Date.now() < expires_at) {
       try {
         const apiRes = await axios.get(apiUrl, {
           headers: {
-            Authorization: `Bearer ${cachedToken}`
+            Authorization: `Bearer ${access_token}`
           }
         });
         console.log('API Response:', JSON.stringify(apiRes.data, null, 2));
@@ -101,6 +104,49 @@ async function main() {
           console.error('API call failed:', err.response?.data || err.message);
           process.exit(1);
         }
+      }
+    }
+    // If refresh_token is present and valid, try to refresh
+    if (refresh_token && (!refresh_expires_at || Date.now() < refresh_expires_at)) {
+      try {
+        const refreshRes = await axios.post(tokenUrl, new URLSearchParams({
+          grant_type: 'refresh_token',
+          refresh_token,
+          client_id: OIDC_CLIENT_ID
+        }), {
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded' }
+        });
+        const new_access_token = refreshRes.data.access_token;
+        const new_expires_in = refreshRes.data.expires_in;
+        const new_refresh_token = refreshRes.data.refresh_token || refresh_token;
+        const new_refresh_expires_in = refreshRes.data.refresh_expires_in || null;
+        writeTokenCache(new_access_token, new_expires_in, new_refresh_token, new_refresh_expires_in);
+        // Try API call again with new token
+        try {
+          const apiRes = await axios.get(apiUrl, {
+            headers: {
+              Authorization: `Bearer ${new_access_token}`
+            }
+          });
+          console.log('API Response:', JSON.stringify(apiRes.data, null, 2));
+          return;
+        } catch (err) {
+          if (err.response && err.response.status === 401 && !triedReauth) {
+            fs.unlinkSync(CACHE_FILE);
+            console.log('Refreshed token invalid, re-authenticating...');
+            triedReauth = true;
+            continue;
+          } else {
+            console.error('API call failed:', err.response?.data || err.message);
+            process.exit(1);
+          }
+        }
+      } catch (err) {
+        // If refresh fails, clear cache and continue to re-auth
+        fs.unlinkSync(CACHE_FILE);
+        console.log('Refresh token expired or invalid, re-authenticating...');
+        triedReauth = true;
+        continue;
       }
     }
     break;
@@ -133,7 +179,7 @@ async function main() {
       console.log('Or open:', verification_uri_complete);
     }
     // Poll for token
-    let accessToken, expires_in;
+    let accessToken, expires_in, refresh_token, refresh_expires_in;
     let pollInterval = interval;
     while (true) {
       await new Promise(r => setTimeout(r, pollInterval * 1000));
@@ -147,6 +193,8 @@ async function main() {
         });
         accessToken = pollRes.data.access_token;
         expires_in = pollRes.data.expires_in;
+        refresh_token = pollRes.data.refresh_token;
+        refresh_expires_in = pollRes.data.refresh_expires_in;
         if (accessToken) break;
       } catch (err) {
         if (err.response && err.response.data && err.response.data.error === 'authorization_pending') {
@@ -163,7 +211,7 @@ async function main() {
       }
     }
     // Cache token
-    if (accessToken && expires_in) writeTokenCache(accessToken, expires_in);
+    if (accessToken && expires_in) writeTokenCache(accessToken, expires_in, refresh_token, refresh_expires_in);
     // Use the access token in a GET call to the provided URL
     const apiUrl = `https://api.pingone.com/v1/environments/${ENV_ID}/${apiEndpoint.replace(/^\/+/,'')}`;
     try {
@@ -209,12 +257,14 @@ async function main() {
         });
         const accessToken = tokenRes.data.access_token;
         const expires_in = tokenRes.data.expires_in;
+        const refresh_token = tokenRes.data.refresh_token;
+        const refresh_expires_in = tokenRes.data.refresh_expires_in;
         if (!accessToken) {
           console.error('No access token received.');
           process.exit(1);
         }
         // Cache token
-        if (accessToken && expires_in) writeTokenCache(accessToken, expires_in);
+        if (accessToken && expires_in) writeTokenCache(accessToken, expires_in, refresh_token, refresh_expires_in);
         // Use the access token in a GET call to the provided URL
         const apiUrl = `https://api.pingone.com/v1/environments/${ENV_ID}/${apiEndpoint.replace(/^\/+/,'')}`;
         console.log('Using API URL:', apiUrl);
