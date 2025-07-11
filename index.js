@@ -14,12 +14,13 @@ let {
   OIDC_ISSUER,
   OIDC_REDIRECT_PORT,
   OIDC_SCOPE,
-  ENV_ID
+  OIDC_ENV_ID,
+  API_ENV_ID
 } = process.env;
 
-// Substitute ENV_ID in OIDC_ISSUER if needed
-if (OIDC_ISSUER && ENV_ID && OIDC_ISSUER.includes('${ENV_ID}')) {
-  OIDC_ISSUER = OIDC_ISSUER.replace('${ENV_ID}', ENV_ID);
+// Substitute OIDC_ENV_ID in OIDC_ISSUER if needed
+if (OIDC_ISSUER && OIDC_ENV_ID && OIDC_ISSUER.includes('${OIDC_ENV_ID}')) {
+  OIDC_ISSUER = OIDC_ISSUER.replace('${OIDC_ENV_ID}', OIDC_ENV_ID);
 }
 
 if (!OIDC_CLIENT_ID || !OIDC_ISSUER || !OIDC_REDIRECT_PORT) {
@@ -68,8 +69,8 @@ async function main() {
   // Remove all flags (starting with --)
   const endpointArg = argv.find(arg => !arg.startsWith('--'));
   const apiEndpoint = endpointArg || 'users';
-  if (!ENV_ID) {
-    console.error('Missing ENV_ID in environment.');
+  if (!API_ENV_ID) {
+    console.error('Missing API_ENV_ID in environment.');
     process.exit(1);
   }
 
@@ -82,7 +83,7 @@ async function main() {
   let triedReauth = false;
   while (true) {
     let { access_token, expires_at, refresh_token, refresh_expires_at } = readTokenCache();
-    const apiUrl = `https://api.pingone.com/v1/environments/${ENV_ID}/${apiEndpoint.replace(/^\/+/,'')}`;
+    const apiUrl = `https://api.pingone.com/v1/environments/${API_ENV_ID}/${apiEndpoint.replace(/^\/+/,'')}`;
     // If access_token is valid, use it
     if (access_token && expires_at && Date.now() < expires_at) {
       try {
@@ -213,7 +214,7 @@ async function main() {
     // Cache token
     if (accessToken && expires_in) writeTokenCache(accessToken, expires_in, refresh_token, refresh_expires_in);
     // Use the access token in a GET call to the provided URL
-    const apiUrl = `https://api.pingone.com/v1/environments/${ENV_ID}/${apiEndpoint.replace(/^\/+/,'')}`;
+    const apiUrl = `https://api.pingone.com/v1/environments/${API_ENV_ID}/${apiEndpoint.replace(/^\/+/,'')}`;
     try {
       const apiRes = await axios.get(apiUrl, {
         headers: {
@@ -266,7 +267,7 @@ async function main() {
         // Cache token
         if (accessToken && expires_in) writeTokenCache(accessToken, expires_in, refresh_token, refresh_expires_in);
         // Use the access token in a GET call to the provided URL
-        const apiUrl = `https://api.pingone.com/v1/environments/${ENV_ID}/${apiEndpoint.replace(/^\/+/,'')}`;
+        const apiUrl = `https://api.pingone.com/v1/environments/${API_ENV_ID}/${apiEndpoint.replace(/^\/+/,'')}`;
         console.log('Using API URL:', apiUrl);
         try {
           const apiRes = await axios.get(apiUrl, {
