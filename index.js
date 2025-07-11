@@ -92,7 +92,19 @@ async function main() {
             Authorization: `Bearer ${access_token}`
           }
         });
-        console.log('API Response:', JSON.stringify(apiRes.data, null, 2));
+        // Pretty-print JSON with color if possible
+        try {
+          const pretty = JSON.stringify(apiRes.data, null, 2);
+          if (process.stdout.isTTY) {
+            // Try to use 'util.inspect' for color if available
+            const util = await import('util');
+            console.log('API Response:\n' + util.inspect.default(apiRes.data, { colors: true, depth: null }));
+          } else {
+            console.log('API Response:', pretty);
+          }
+        } catch {
+          console.log('API Response:', JSON.stringify(apiRes.data, null, 2));
+        }
         return;
       } catch (err) {
         // If unauthorized, clear cache and continue to re-auth
