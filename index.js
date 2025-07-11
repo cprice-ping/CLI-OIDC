@@ -32,14 +32,89 @@ function sha256(buffer) {
 }
 
 async function main() {
-  // Generate PKCE
-  const codeVerifier = base64URLEncode(crypto.randomBytes(32));
-  const codeChallenge = base64URLEncode(sha256(codeVerifier));
+  // Parse CLI args
+  const useDevice = process.argv.includes('--device');
 
   // Discover OIDC endpoints
   const { data: discovery } = await axios.get(`${OIDC_ISSUER}/.well-known/openid-configuration`);
   const authUrl = discovery.authorization_endpoint;
   const tokenUrl = discovery.token_endpoint;
+  const deviceEndpoint = discovery.device_authorization_endpoint;
+
+  if (useDevice) {
+    // Device Authorization Grant
+    if (!deviceEndpoint) {
+      console.error('Device Authorization endpoint not found in OIDC discovery.');
+      process.exit(1);
+    }
+    // Request device code
+    let deviceRes;
+    try {
+      deviceRes = await axios.post(deviceEndpoint, new URLSearchParams({
+        client_id: OIDC_CLIENT_ID,
+        scope: OIDC_SCOPE || 'openid profile email'
+      }), {
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' }
+      });
+    } catch (err) {
+      console.error('Device authorization request failed:', err.response?.data || err.message);
+      process.exit(1);
+    }
+    const { device_code, user_code, verification_uri, verification_uri_complete, interval = 5 } = deviceRes.data;
+    console.log('==== DEVICE AUTHORIZATION ====');
+    console.log('User Code:', user_code);
+    console.log('Verification URI:', verification_uri);
+    if (verification_uri_complete) {
+      console.log('Or open:', verification_uri_complete);
+    }
+    // Poll for token
+    let accessToken;
+    while (true) {
+      await new Promise(r => setTimeout(r, interval * 1000));
+      try {
+        const pollRes = await axios.post(tokenUrl, new URLSearchParams({
+          grant_type: 'urn:ietf:params:oauth:grant-type:device_code',
+          device_code,
+          client_id: OIDC_CLIENT_ID
+        }), {
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded' }
+        });
+        accessToken = pollRes.data.access_token;
+        if (accessToken) break;
+      } catch (err) {
+        if (err.response && err.response.data && err.response.data.error === 'authorization_pending') {
+          // keep polling
+          continue;
+        } else if (err.response && err.response.data && err.response.data.error === 'slow_down') {
+          // increase interval
+          interval += 5;
+          continue;
+        } else {
+          console.error('Device token polling failed:', err.response?.data || err.message);
+          process.exit(1);
+        }
+      }
+    }
+    // Use the access token in a GET call to the provided URL
+    const apiUrl = 'https://api.pingone.com/v1/environments/490b9f38-f20b-4afa-b02e-3cc1315e29ab/users';
+    try {
+      const apiRes = await axios.get(apiUrl, {
+        headers: {
+          Authorization: `Bearer ${accessToken}`
+        }
+      });
+      console.log('API Response:', JSON.stringify(apiRes.data, null, 2));
+    } catch (apiErr) {
+      console.error('API call failed:', apiErr.response?.data || apiErr.message);
+      process.exit(1);
+    }
+    return;
+  }
+
+  // Browser-based PKCE flow (default)
+  // Generate PKCE
+  const codeVerifier = base64URLEncode(crypto.randomBytes(32));
+  const codeChallenge = base64URLEncode(sha256(codeVerifier));
 
   // Start local server
   const server = http.createServer(async (req, res) => {
