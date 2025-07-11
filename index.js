@@ -6,6 +6,7 @@ import crypto from 'crypto';
 import axios from 'axios';
 import fs from 'fs';
 import path from 'path';
+import prettyjson from 'prettyjson';
 
 // Load env vars
 
@@ -92,19 +93,8 @@ async function main() {
             Authorization: `Bearer ${access_token}`
           }
         });
-        // Pretty-print JSON with color if possible
-        try {
-          const pretty = JSON.stringify(apiRes.data, null, 2);
-          if (process.stdout.isTTY) {
-            // Try to use 'util.inspect' for color if available
-            const util = await import('util');
-            console.log('API Response:\n' + util.inspect.default(apiRes.data, { colors: true, depth: null }));
-          } else {
-            console.log('API Response:', pretty);
-          }
-        } catch {
-          console.log('API Response:', JSON.stringify(apiRes.data, null, 2));
-        }
+        // Pretty-print JSON with color using prettyjson
+        console.log('API Response:\n' + prettyjson.render(apiRes.data));
         return;
       } catch (err) {
         // If unauthorized, clear cache and continue to re-auth
