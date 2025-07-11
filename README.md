@@ -36,6 +36,7 @@ A Node.js CLI tool to perform OIDC authentication (with PKCE or Device Authoriza
 ## How it works
 - By default, launches a browser for OIDC login (PKCE), receives the code, exchanges for an access token, and calls the PingOne API.
 - With `--device`, shows a user code and verification URL for device login, polls for the token, and calls the PingOne API.
+- The tool caches the access token in `.token_cache.json` and reuses it until it expires, reducing the need for repeated logins.
 
 ## API Call
 After authentication, the tool uses the access token to call:

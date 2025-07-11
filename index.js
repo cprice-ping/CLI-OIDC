@@ -4,6 +4,8 @@ import http from 'http';
 import open from 'open';
 import crypto from 'crypto';
 import axios from 'axios';
+import fs from 'fs';
+import path from 'path';
 
 // Load env vars
 
@@ -39,6 +41,24 @@ function sha256(buffer) {
 }
 
 
+const CACHE_FILE = path.join(process.cwd(), '.token_cache.json');
+
+function readTokenCache() {
+  try {
+    const data = fs.readFileSync(CACHE_FILE, 'utf8');
+    const { access_token, expires_at } = JSON.parse(data);
+    if (access_token && expires_at && Date.now() < expires_at) {
+      return access_token;
+    }
+  } catch {}
+  return null;
+}
+
+function writeTokenCache(access_token, expires_in) {
+  const expires_at = Date.now() + (expires_in * 1000) - 10000; // 10s early
+  fs.writeFileSync(CACHE_FILE, JSON.stringify({ access_token, expires_at }));
+}
+
 async function main() {
   // Parse CLI args
   const argv = process.argv.slice(2);
@@ -56,6 +76,30 @@ async function main() {
   const authUrl = discovery.authorization_endpoint;
   const tokenUrl = discovery.token_endpoint;
   const deviceEndpoint = discovery.device_authorization_endpoint;
+
+  // Try to use cached token
+  let cachedToken = readTokenCache();
+  if (cachedToken) {
+    const apiUrl = `https://api.pingone.com/v1/environments/${ENV_ID}/${apiEndpoint.replace(/^\/+/,'')}`;
+    try {
+      const apiRes = await axios.get(apiUrl, {
+        headers: {
+          Authorization: `Bearer ${cachedToken}`
+        }
+      });
+      console.log('API Response:', JSON.stringify(apiRes.data, null, 2));
+      return;
+    } catch (err) {
+      // If unauthorized, clear cache and continue to re-auth
+      if (err.response && err.response.status === 401) {
+        fs.unlinkSync(CACHE_FILE);
+        console.log('Cached token expired or invalid, re-authenticating...');
+      } else {
+        console.error('API call failed:', err.response?.data || err.message);
+        process.exit(1);
+      }
+    }
+  }
 
   if (useDevice) {
     // Device Authorization Grant
@@ -84,7 +128,7 @@ async function main() {
       console.log('Or open:', verification_uri_complete);
     }
     // Poll for token
-    let accessToken;
+    let accessToken, expires_in;
     let pollInterval = interval;
     while (true) {
       await new Promise(r => setTimeout(r, pollInterval * 1000));
@@ -97,6 +141,7 @@ async function main() {
           headers: { 'Content-Type': 'application/x-www-form-urlencoded' }
         });
         accessToken = pollRes.data.access_token;
+        expires_in = pollRes.data.expires_in;
         if (accessToken) break;
       } catch (err) {
         if (err.response && err.response.data && err.response.data.error === 'authorization_pending') {
@@ -112,8 +157,10 @@ async function main() {
         }
       }
     }
+    // Cache token
+    if (accessToken && expires_in) writeTokenCache(accessToken, expires_in);
     // Use the access token in a GET call to the provided URL
-    const apiUrl = `https://api.pingone.com/v1/environments/${ENV_ID}/${apiEndpoint.replace(/^\/+/, '')}`;
+    const apiUrl = `https://api.pingone.com/v1/environments/${ENV_ID}/${apiEndpoint.replace(/^\/+/,'')}`;
     try {
       const apiRes = await axios.get(apiUrl, {
         headers: {
@@ -156,12 +203,15 @@ async function main() {
           headers: { 'Content-Type': 'application/x-www-form-urlencoded' }
         });
         const accessToken = tokenRes.data.access_token;
+        const expires_in = tokenRes.data.expires_in;
         if (!accessToken) {
           console.error('No access token received.');
           process.exit(1);
         }
+        // Cache token
+        if (accessToken && expires_in) writeTokenCache(accessToken, expires_in);
         // Use the access token in a GET call to the provided URL
-        const apiUrl = `https://api.pingone.com/v1/environments/${ENV_ID}/${apiEndpoint.replace(/^\/+/, '')}`;
+        const apiUrl = `https://api.pingone.com/v1/environments/${ENV_ID}/${apiEndpoint.replace(/^\/+/,'')}`;
         console.log('Using API URL:', apiUrl);
         try {
           const apiRes = await axios.get(apiUrl, {
