@@ -9,17 +9,22 @@ A Node.js CLI tool to perform OIDC authentication (with PKCE or Device Authoriza
    ```sh
    npm install
    ```
-3. Run the CLI for browser-based PKCE flow:
+3. Run the CLI for browser-based PKCE flow (default endpoint is `users`):
    ```sh
    node index.js
    ```
-4. Or run with device authorization flow:
+4. To call a specific API endpoint (e.g., a user):
    ```sh
-   node index.js --device
+   node index.js users/b11fcccd-c517-4fbb-8912-84628b6dea61
+   ```
+5. Or run with device authorization flow:
+   ```sh
+   node index.js users --device
    ```
 
 ## Options
 - `--device`: Use OIDC Device Authorization Grant (for headless or remote environments)
+- `[apiEndpoint]`: The PingOne API path after `/environments/{ENV_ID}/` (e.g., `users`, `users/{id}`, `populations`)
 
 ## Environment Variables
 - `OIDC_CLIENT_ID`: Your OIDC client ID

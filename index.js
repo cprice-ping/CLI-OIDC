@@ -41,9 +41,11 @@ function sha256(buffer) {
 
 async function main() {
   // Parse CLI args
-  const useDevice = process.argv.includes('--device');
-  // Get API endpoint from CLI args (first non-flag argument)
-  const apiEndpoint = process.argv.find(arg => !arg.startsWith('--') && arg !== 'node' && !arg.endsWith('index.js')) || 'users';
+  const argv = process.argv.slice(2);
+  const useDevice = argv.includes('--device');
+  // Remove all flags (starting with --)
+  const endpointArg = argv.find(arg => !arg.startsWith('--'));
+  const apiEndpoint = endpointArg || 'users';
   if (!ENV_ID) {
     console.error('Missing ENV_ID in environment.');
     process.exit(1);
@@ -111,7 +113,7 @@ async function main() {
       }
     }
     // Use the access token in a GET call to the provided URL
-    const apiUrl = `https://api.pingone.com/v1/environments/${ENV_ID}/${apiEndpoint}`;
+    const apiUrl = `https://api.pingone.com/v1/environments/${ENV_ID}/${apiEndpoint.replace(/^\/+/, '')}`;
     try {
       const apiRes = await axios.get(apiUrl, {
         headers: {
@@ -159,7 +161,8 @@ async function main() {
           process.exit(1);
         }
         // Use the access token in a GET call to the provided URL
-        const apiUrl = `https://api.pingone.com/v1/environments/${ENV_ID}/${apiEndpoint}`;
+        const apiUrl = `https://api.pingone.com/v1/environments/${ENV_ID}/${apiEndpoint.replace(/^\/+/, '')}`;
+        console.log('Using API URL:', apiUrl);
         try {
           const apiRes = await axios.get(apiUrl, {
             headers: {
