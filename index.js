@@ -6,12 +6,19 @@ import crypto from 'crypto';
 import axios from 'axios';
 
 // Load env vars
-const {
+
+let {
   OIDC_CLIENT_ID,
   OIDC_ISSUER,
   OIDC_REDIRECT_PORT,
-  OIDC_SCOPE
+  OIDC_SCOPE,
+  ENV_ID
 } = process.env;
+
+// Substitute ENV_ID in OIDC_ISSUER if needed
+if (OIDC_ISSUER && ENV_ID && OIDC_ISSUER.includes('${ENV_ID}')) {
+  OIDC_ISSUER = OIDC_ISSUER.replace('${ENV_ID}', ENV_ID);
+}
 
 if (!OIDC_CLIENT_ID || !OIDC_ISSUER || !OIDC_REDIRECT_PORT) {
   console.error('Missing required env vars. See .env.example.');
@@ -31,9 +38,16 @@ function sha256(buffer) {
   return crypto.createHash('sha256').update(buffer).digest();
 }
 
+
 async function main() {
   // Parse CLI args
   const useDevice = process.argv.includes('--device');
+  // Get API endpoint from CLI args (first non-flag argument)
+  const apiEndpoint = process.argv.find(arg => !arg.startsWith('--') && arg !== 'node' && !arg.endsWith('index.js')) || 'users';
+  if (!ENV_ID) {
+    console.error('Missing ENV_ID in environment.');
+    process.exit(1);
+  }
 
   // Discover OIDC endpoints
   const { data: discovery } = await axios.get(`${OIDC_ISSUER}/.well-known/openid-configuration`);
@@ -69,8 +83,9 @@ async function main() {
     }
     // Poll for token
     let accessToken;
+    let pollInterval = interval;
     while (true) {
-      await new Promise(r => setTimeout(r, interval * 1000));
+      await new Promise(r => setTimeout(r, pollInterval * 1000));
       try {
         const pollRes = await axios.post(tokenUrl, new URLSearchParams({
           grant_type: 'urn:ietf:params:oauth:grant-type:device_code',
@@ -87,7 +102,7 @@ async function main() {
           continue;
         } else if (err.response && err.response.data && err.response.data.error === 'slow_down') {
           // increase interval
-          interval += 5;
+          pollInterval += 5;
           continue;
         } else {
           console.error('Device token polling failed:', err.response?.data || err.message);
@@ -96,7 +111,7 @@ async function main() {
       }
     }
     // Use the access token in a GET call to the provided URL
-    const apiUrl = 'https://api.pingone.com/v1/environments/490b9f38-f20b-4afa-b02e-3cc1315e29ab/users';
+    const apiUrl = `https://api.pingone.com/v1/environments/${ENV_ID}/${apiEndpoint}`;
     try {
       const apiRes = await axios.get(apiUrl, {
         headers: {
@@ -144,7 +159,7 @@ async function main() {
           process.exit(1);
         }
         // Use the access token in a GET call to the provided URL
-        const apiUrl = 'https://api.pingone.com/v1/environments/490b9f38-f20b-4afa-b02e-3cc1315e29ab/users';
+        const apiUrl = `https://api.pingone.com/v1/environments/${ENV_ID}/${apiEndpoint}`;
         try {
           const apiRes = await axios.get(apiUrl, {
             headers: {
