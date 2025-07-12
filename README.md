@@ -32,7 +32,6 @@ A Node.js CLI tool to perform OIDC authentication (with PKCE or Device Authoriza
 - `API_ENV_ID`: The environment ID for API calls
 - `OIDC_ISSUER`: OIDC issuer URL (e.g., https://auth.pingone.com/${OIDC_ENV_ID}/as)
 - `OIDC_REDIRECT_PORT`: Port for local redirect (e.g., 3000)
-- `OIDC_SCOPE`: (optional) OIDC scopes (default: openid profile email)
 
 ## How it works
 - By default, launches a browser for OIDC login (PKCE), receives the code, exchanges for an access token, and calls the PingOne API.

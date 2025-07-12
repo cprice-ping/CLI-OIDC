@@ -14,7 +14,6 @@ let {
   OIDC_CLIENT_ID,
   OIDC_ISSUER,
   OIDC_REDIRECT_PORT,
-  OIDC_SCOPE,
   OIDC_ENV_ID,
   API_ENV_ID
 } = process.env;
@@ -199,8 +198,7 @@ async function main() {
     let deviceRes;
     try {
       deviceRes = await axios.post(deviceEndpoint, new URLSearchParams({
-        client_id: OIDC_CLIENT_ID,
-        scope: OIDC_SCOPE || 'openid profile email'
+        client_id: OIDC_CLIENT_ID
       }), {
         headers: { 'Content-Type': 'application/x-www-form-urlencoded' }
       });
@@ -363,7 +361,6 @@ async function main() {
       client_id: OIDC_CLIENT_ID,
       response_type: 'code',
       redirect_uri: REDIRECT_URI,
-      scope: OIDC_SCOPE || 'openid profile email',
       code_challenge: codeChallenge,
       code_challenge_method: 'S256'
     });
